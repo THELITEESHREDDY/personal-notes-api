@@ -147,6 +147,14 @@ def get_all_notes(
     limit: int = 10,
     page: int = 1
 ):
+    user_data=session.exec(select(UserDB).where(UserDB.userid== userid)).first()
+    
+    
+    if not user_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials"
+        )
     offset = (page - 1) * limit
 
     query = select(NoteDB).where(NoteDB.userid == userid)
@@ -207,8 +215,17 @@ def update_note(req_notes: Notes_Update,session:SessionDep):
     session.refresh(notes)
     return notes
 
-@app.delete("/note/{notes_id}")
-def delete_note(notes_id:int, session:SessionDep):
+@app.delete("/{userid}/note/{notes_id}")
+def delete_note(userid:str,notes_id:int, session:SessionDep):
+
+    user_data=session.exec(select(UserDB).where(UserDB.userid== userid)).first()
+    
+    
+    if not user_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials"
+        )
     
     notes=session.exec(select(NoteDB).where(NoteDB.noteid==notes_id)).first()
 
