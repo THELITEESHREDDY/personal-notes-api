@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException,status,Depends,Query
 from pydantic import BaseModel,EmailStr
 from datetime import datetime
 from sqlmodel import SQLModel, Session, Field, create_engine,select
-from sqlalchemy import or_,select,and_
+from sqlalchemy import or_,and_
 from typing import Annotated
 
 #Database Schemas
@@ -118,7 +118,7 @@ def user_register(user: User_register,session: SessionDep):
 @app.post("/login",response_model=User)
 def user_login(req_user:User_login,session: SessionDep):
 
-    user_data=session.query(UserDB).filter(or_(UserDB.userid== req_user.key,UserDB.email==req_user.key)).one()
+    user_data=session.exec(select(UserDB).where(or_(UserDB.userid== req_user.key,UserDB.email==req_user.key))).first()
     
     
     if not user_data:
@@ -138,35 +138,32 @@ def user_login(req_user:User_login,session: SessionDep):
 
 
 
-@app.get("/{userid}/notes",response_model=list[Note_Create_and_Response])
-def get_all_notes(userid:str,session:SessionDep,tag: str|None,sort:Annotated[int,Query()]=1,limit:Annotated[int,Query()]=10,pages:Annotated[int,Query()]=1):
+@app.get("/{userid}/notes", response_model=list[Note])
+def get_all_notes(
+    userid: str,
+    session: SessionDep,
+    tag: str | None = None,
+    sort: int = 1,
+    limit: int = 10,
+    page: int = 1
+):
+    offset = (page - 1) * limit
 
-    offset=(pages-1)*limit
-    user_db=None
+    query = select(NoteDB).where(NoteDB.userid == userid)
 
-    if not tag:
-        if sort==1:
-            user_db=session.exec( select(UserDB).where(UserDB.userid==userid).order_by(NoteDB.createdAt.asc()).skip(offset).limit(limit)).all()
-        else:
-            user_db=session.exec( select(UserDB).where(UserDB.userid==userid).order_by(NoteDB.createdAt.desc()).skip(offset).limit(limit)).all()
+    if tag:
+        query = query.where(NoteDB.tag == tag)
 
+    if sort == 1:
+        query = query.order_by(NoteDB.createdAt.asc())
     else:
-        if sort==1:
-            user_db=session.exec(select(UserDB).where(and_(UserDB.userid==userid,UserDB.tag==tag)).order_by(NoteDB.createdAt.asc()).skip(offset).limit(limit)).all()
-        else:
-            user_db=session.exec(select(UserDB).where(and_(UserDB.userid==userid,UserDB.tag==tag)).order_by(NoteDB.createdAt.desc()).skip(offset).limit(limit)).all()
+        query = query.order_by(NoteDB.createdAt.desc())
 
-    if not user_db:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not valid"
-        )
-    
-    req=session.exec(select(NoteDB).where(NoteDB.userid==userid))
-    
-    notes=req.all()
+    query = query.offset(offset).limit(limit)
+
+    notes = session.exec(query).all()
+
     return notes
-
 
 @app.post("/create-note/{userid}",response_model=Note_Create_and_Response)
 def create_note(userid:str,notes: Note_Create_and_Response,session: SessionDep):
@@ -202,7 +199,7 @@ def update_note(req_notes: Notes_Update,session:SessionDep):
             detail="Note not found"
         )
     
-    update_data = req_notes.model_dump(exclude_unset=True)
+    update_data = req_notes.model_dump(exclude_unset=True,exclude={"noteid"})
     for key, value in update_data.items():
         setattr(notes, key, value)
   
@@ -210,7 +207,7 @@ def update_note(req_notes: Notes_Update,session:SessionDep):
     session.refresh(notes)
     return notes
 
-@app.delete("/note/")
+@app.delete("/note/{notes_id}")
 def delete_note(notes_id:int, session:SessionDep):
     
     notes=session.exec(select(NoteDB).where(NoteDB.noteid==notes_id)).first()
