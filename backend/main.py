@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException,status,Depends,Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel,EmailStr
 from datetime import datetime
 from sqlmodel import SQLModel, Session, Field, create_engine,select
@@ -80,6 +81,17 @@ class Note(Note_Create_and_Response):
 
 
 app= FastAPI(title="Notes Taker")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()
@@ -94,7 +106,7 @@ def user_register(user: User_register,session: SessionDep):
     query=select(UserDB).where(or_(UserDB.email==user.email, UserDB.userid==user.userid))
     req=session.exec(query)
     
-    user_db=req.all()
+    user_db=req.first()
     
     if user_db:
         raise HTTPException(
